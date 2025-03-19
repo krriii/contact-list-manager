@@ -1,36 +1,13 @@
-const mysql = require('mysql2/promise');
+const db = require('./firebase-config');
+const { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query, where } = require('firebase/firestore');
 
-// Database configuration
-const dbConfig = {
-  host: 'localhost',
-  user: 'root',         // Replace with your MySQL username
-  password: 'Krisha1128@',         // Replace with your MySQL password
-  database: 'contacts_db'
-};
-
-// Create the connection pool
-const pool = mysql.createPool(dbConfig);
-
-// Initialize database and create tables if they don't exist
+// Initialize database
 async function initializeDatabase() {
   try {
-    // Check database connection
-    await pool.query('SELECT 1');
-    console.log('Connected to MySQL database');
-    
-    // Create contacts table if it doesn't exist
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS contacts (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(100) NOT NULL,
-        email VARCHAR(100) NOT NULL,
-        phone VARCHAR(20) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )
-    `);
-    console.log('Contacts table initialized');
-    
+    // Check if contacts collection exists by trying to get its documents
+    const contactsRef = collection(db, 'contacts');
+    await getDocs(contactsRef);
+    console.log('Connected to Firebase Firestore');
     return true;
   } catch (error) {
     console.error('Database initialization error:', error);
@@ -38,12 +15,89 @@ async function initializeDatabase() {
   }
 }
 
-// Get database connection
-function getConnection() {
-  return pool;
+// Get all contacts
+async function getAllContacts() {
+  try {
+    const contactsRef = collection(db, 'contacts');
+    const querySnapshot = await getDocs(contactsRef);
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error('Error getting contacts:', error);
+    throw error;
+  }
+}
+
+// Add a new contact
+async function addContact(contact) {
+  try {
+    const contactsRef = collection(db, 'contacts');
+    const docRef = await addDoc(contactsRef, {
+      ...contact,
+      created_at: new Date(),
+      updated_at: new Date()
+    });
+    return { id: docRef.id, ...contact };
+  } catch (error) {
+    console.error('Error adding contact:', error);
+    throw error;
+  }
+}
+
+// Update a contact
+async function updateContact(id, contact) {
+  try {
+    const contactRef = doc(db, 'contacts', id);
+    await updateDoc(contactRef, {
+      ...contact,
+      updated_at: new Date()
+    });
+    return { id, ...contact };
+  } catch (error) {
+    console.error('Error updating contact:', error);
+    throw error;
+  }
+}
+
+// Delete a contact
+async function deleteContact(id) {
+  try {
+    const contactRef = doc(db, 'contacts', id);
+    await deleteDoc(contactRef);
+    return true;
+  } catch (error) {
+    console.error('Error deleting contact:', error);
+    throw error;
+  }
+}
+
+// Search contacts
+async function searchContacts(searchTerm) {
+  try {
+    const contactsRef = collection(db, 'contacts');
+    const q = query(
+      contactsRef,
+      where('name', '>=', searchTerm),
+      where('name', '<=', searchTerm + '\uf8ff')
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error('Error searching contacts:', error);
+    throw error;
+  }
 }
 
 module.exports = {
   initializeDatabase,
-  getConnection
+  getAllContacts,
+  addContact,
+  updateContact,
+  deleteContact,
+  searchContacts
 };
