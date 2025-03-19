@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const searchInput = document.getElementById('searchInput');
     const formTitle = document.getElementById('formTitle');
     const cancelBtn = document.getElementById('cancelBtn');
+    const connectionStatus = document.getElementById('connection-status');
     
     // Form inputs
     const contactIdInput = document.getElementById('contactId');
@@ -15,6 +16,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // API URL - now relative to the current domain
     const API_URL = '/api/contacts';
     
+    // Offline queue for pending operations
+    let offlineQueue = [];
+    
     // Load all contacts when page loads
     loadContacts();
     
@@ -23,13 +27,71 @@ document.addEventListener('DOMContentLoaded', function() {
     searchInput.addEventListener('input', searchContacts);
     cancelBtn.addEventListener('click', resetForm);
     
+    // Online/Offline event listeners
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
     // Functions
+    
+    // Handle online status
+    function handleOnline() {
+        connectionStatus.textContent = 'You are online';
+        connectionStatus.classList.remove('hidden', 'bg-red-500', 'text-white');
+        connectionStatus.classList.add('bg-green-500', 'text-white');
+        
+        // Process offline queue
+        processOfflineQueue();
+    }
+    
+    // Handle offline status
+    function handleOffline() {
+        connectionStatus.textContent = 'You are offline';
+        connectionStatus.classList.remove('hidden', 'bg-green-500', 'text-white');
+        connectionStatus.classList.add('bg-red-500', 'text-white');
+    }
+    
+    // Process offline queue when back online
+    async function processOfflineQueue() {
+        while (offlineQueue.length > 0) {
+            const operation = offlineQueue.shift();
+            try {
+                await performOperation(operation);
+                showNotification('Offline changes synced successfully!', 'success');
+            } catch (error) {
+                console.error('Error syncing offline operation:', error);
+                showNotification('Error syncing offline changes.', 'error');
+                // Put the operation back in the queue
+                offlineQueue.unshift(operation);
+                break;
+            }
+        }
+    }
+    
+    // Perform operation (create, update, delete)
+    async function performOperation(operation) {
+        const { method, url, data } = operation;
+        const response = await fetch(url, {
+            method,
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: data ? JSON.stringify(data) : undefined
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        return response.json();
+    }
     
     // Fetch all contacts from API
     function loadContacts() {
         fetch(API_URL)
             .then(response => response.json())
             .then(contacts => {
+                // Sort contacts by name
+                contacts.sort((a, b) => a.name.localeCompare(b.name));
                 displayContacts(contacts);
             })
             .catch(error => {
@@ -40,7 +102,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Display contacts in the list
     function displayContacts(contacts) {
-        if (contacts.length === 0) {
+        if (!contacts || contacts.length === 0) {
             contactsList.innerHTML = '<p class="text-gray-500 text-center py-4">No contacts found.</p>';
             return;
         }
@@ -109,6 +171,19 @@ document.addEventListener('DOMContentLoaded', function() {
         saveBtn.disabled = true;
         saveBtn.classList.add('opacity-75');
         
+        // Check if offline
+        if (!navigator.onLine) {
+            offlineQueue.push({
+                method,
+                url,
+                data: contactData
+            });
+            showNotification('You are offline. Changes will sync when online.', 'warning');
+            resetForm();
+            loadContacts();
+            return;
+        }
+        
         fetch(url, {
             method: method,
             headers: {
@@ -116,11 +191,15 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             body: JSON.stringify(contactData)
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
         .then(data => {
             resetForm();
-            loadContacts();
-            // Show success message
+            loadContacts(); // Reload contacts to get the updated list
             showNotification('Contact saved successfully!', 'success');
         })
         .catch(error => {
@@ -128,7 +207,6 @@ document.addEventListener('DOMContentLoaded', function() {
             showNotification('Failed to save contact. Please try again.', 'error');
         })
         .finally(() => {
-            // Reset button state
             saveBtn.textContent = originalText;
             saveBtn.disabled = false;
             saveBtn.classList.remove('opacity-75');
@@ -138,16 +216,26 @@ document.addEventListener('DOMContentLoaded', function() {
     // Delete a contact
     function deleteContact(id) {
         if (confirm('Are you sure you want to delete this contact?')) {
+            // Check if offline
+            if (!navigator.onLine) {
+                offlineQueue.push({
+                    method: 'DELETE',
+                    url: `${API_URL}/${id}`
+                });
+                showNotification('You are offline. Changes will sync when online.', 'warning');
+                loadContacts();
+                return;
+            }
+            
             fetch(`${API_URL}/${id}`, {
                 method: 'DELETE'
             })
             .then(response => {
-                if (response.ok) {
-                    loadContacts();
-                    showNotification('Contact deleted successfully!', 'success');
-                } else {
-                    throw new Error('Failed to delete contact');
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
                 }
+                loadContacts(); // Reload contacts to get the updated list
+                showNotification('Contact deleted successfully!', 'success');
             })
             .catch(error => {
                 console.error('Error deleting contact:', error);

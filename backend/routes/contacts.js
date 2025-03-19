@@ -6,6 +6,9 @@ const { getAllContacts, addContact, updateContact, deleteContact } = require('..
 router.get('/', async (req, res) => {
   try {
     const contacts = await getAllContacts();
+    if (!contacts) {
+      return res.status(404).json({ message: 'No contacts found' });
+    }
     res.json(contacts);
   } catch (error) {
     console.error('Error fetching contacts:', error);
@@ -17,8 +20,11 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const contacts = await getAllContacts();
-    const contact = contacts.find(c => c.id === req.params.id);
+    if (!contacts) {
+      return res.status(404).json({ message: 'No contacts found' });
+    }
     
+    const contact = contacts.find(c => c.id === req.params.id);
     if (!contact) {
       return res.status(404).json({ message: 'Contact not found' });
     }
@@ -41,6 +47,10 @@ router.post('/', async (req, res) => {
     }
     
     const newContact = await addContact({ name, email, phone });
+    if (!newContact) {
+      return res.status(500).json({ message: 'Failed to create contact' });
+    }
+    
     res.status(201).json(newContact);
   } catch (error) {
     console.error('Error creating contact:', error);
@@ -60,6 +70,10 @@ router.put('/:id', async (req, res) => {
     }
     
     const updatedContact = await updateContact(contactId, { name, email, phone });
+    if (!updatedContact) {
+      return res.status(404).json({ message: 'Contact not found' });
+    }
+    
     res.json(updatedContact);
   } catch (error) {
     console.error('Error updating contact:', error);
@@ -71,7 +85,12 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const contactId = req.params.id;
-    await deleteContact(contactId);
+    const result = await deleteContact(contactId);
+    
+    if (!result) {
+      return res.status(404).json({ message: 'Contact not found' });
+    }
+    
     res.status(200).json({ message: 'Contact deleted successfully' });
   } catch (error) {
     console.error('Error deleting contact:', error);

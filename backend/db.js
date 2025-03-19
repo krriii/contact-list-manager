@@ -1,5 +1,5 @@
 const db = require('./firebase-config');
-const { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query, where } = require('firebase/firestore');
+const { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query, where, getDoc } = require('firebase/firestore');
 
 // Initialize database
 async function initializeDatabase() {
@@ -20,13 +20,14 @@ async function getAllContacts() {
   try {
     const contactsRef = collection(db, 'contacts');
     const querySnapshot = await getDocs(contactsRef);
-    return querySnapshot.docs.map(doc => ({
+    const contacts = querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }));
+    return contacts;
   } catch (error) {
     console.error('Error getting contacts:', error);
-    throw error;
+    return null;
   }
 }
 
@@ -39,10 +40,17 @@ async function addContact(contact) {
       created_at: new Date(),
       updated_at: new Date()
     });
-    return { id: docRef.id, ...contact };
+    
+    // Get the newly created document to return complete data
+    const newDoc = await getDoc(docRef);
+    if (!newDoc.exists()) {
+      throw new Error('Failed to create contact');
+    }
+    
+    return { id: docRef.id, ...newDoc.data() };
   } catch (error) {
     console.error('Error adding contact:', error);
-    throw error;
+    return null;
   }
 }
 
@@ -50,14 +58,24 @@ async function addContact(contact) {
 async function updateContact(id, contact) {
   try {
     const contactRef = doc(db, 'contacts', id);
+    
+    // Check if document exists
+    const docSnap = await getDoc(contactRef);
+    if (!docSnap.exists()) {
+      return null;
+    }
+    
     await updateDoc(contactRef, {
       ...contact,
       updated_at: new Date()
     });
-    return { id, ...contact };
+    
+    // Get the updated document
+    const updatedDoc = await getDoc(contactRef);
+    return { id, ...updatedDoc.data() };
   } catch (error) {
     console.error('Error updating contact:', error);
-    throw error;
+    return null;
   }
 }
 
@@ -65,11 +83,18 @@ async function updateContact(id, contact) {
 async function deleteContact(id) {
   try {
     const contactRef = doc(db, 'contacts', id);
+    
+    // Check if document exists
+    const docSnap = await getDoc(contactRef);
+    if (!docSnap.exists()) {
+      return null;
+    }
+    
     await deleteDoc(contactRef);
     return true;
   } catch (error) {
     console.error('Error deleting contact:', error);
-    throw error;
+    return null;
   }
 }
 
@@ -89,7 +114,7 @@ async function searchContacts(searchTerm) {
     }));
   } catch (error) {
     console.error('Error searching contacts:', error);
-    throw error;
+    return null;
   }
 }
 
