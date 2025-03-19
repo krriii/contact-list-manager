@@ -1,4 +1,26 @@
 document.addEventListener('DOMContentLoaded', function() {
+    // PWA Installation handling
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+    });
+
+    // Add install button if not already installed
+    const installButton = document.createElement('button');
+    installButton.className = 'fixed bottom-4 left-4 bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 hidden';
+    installButton.textContent = 'Install App';
+    document.body.appendChild(installButton);
+
+    installButton.addEventListener('click', async () => {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+            installButton.classList.add('hidden');
+        }
+    });
+
     // DOM Elements
     const contactForm = document.getElementById('contactForm');
     const contactsList = document.getElementById('contactsList');
@@ -399,7 +421,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (window.innerWidth < 768) {
             contactsSection.classList.replace('flex', 'block');
-            document.querySelectorAll('.w-1/2').forEach(el => {
+            document.querySelectorAll('[class*="w-1/2"]').forEach(el => {
                 el.classList.replace('w-1/2', 'w-full');
                 if (el.classList.contains('pr-6')) {
                     el.classList.replace('pr-6', 'pb-6');
@@ -411,7 +433,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             if (contactsSection.classList.contains('block')) {
                 contactsSection.classList.replace('block', 'flex');
-                document.querySelectorAll('.w-full').forEach(el => {
+                document.querySelectorAll('[class*="w-full"]').forEach(el => {
                     el.classList.replace('w-full', 'w-1/2');
                     if (el.classList.contains('pb-6')) {
                         el.classList.replace('pb-6', 'pr-6');
