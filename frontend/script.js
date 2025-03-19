@@ -52,17 +52,25 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Process offline queue when back online
     async function processOfflineQueue() {
+        if (!navigator.onLine) {
+            showNotification('Still offline. Changes will sync when online.', 'warning');
+            return;
+        }
+
         while (offlineQueue.length > 0) {
-            const operation = offlineQueue.shift();
+            const operation = offlineQueue[0]; // Look at first item without removing it
             try {
-                await performOperation(operation);
-                showNotification('Offline changes synced successfully!', 'success');
+                const response = await performOperation(operation);
+                if (response) {
+                    offlineQueue.shift(); // Only remove if successful
+                    showNotification('Offline changes synced successfully!', 'success');
+                } else {
+                    throw new Error('No response from server');
+                }
             } catch (error) {
                 console.error('Error syncing offline operation:', error);
-                showNotification('Error syncing offline changes.', 'error');
-                // Put the operation back in the queue
-                offlineQueue.unshift(operation);
-                break;
+                showNotification('Error syncing offline changes. Will retry later.', 'error');
+                break; // Stop processing queue on error
             }
         }
     }
@@ -70,19 +78,24 @@ document.addEventListener('DOMContentLoaded', function() {
     // Perform operation (create, update, delete)
     async function performOperation(operation) {
         const { method, url, data } = operation;
-        const response = await fetch(url, {
-            method,
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: data ? JSON.stringify(data) : undefined
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        try {
+            const response = await fetch(url, {
+                method,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: data ? JSON.stringify(data) : undefined
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            return await response.json();
+        } catch (error) {
+            console.error(`Error performing ${method} operation:`, error);
+            throw error;
         }
-        
-        return response.json();
     }
     
     // Fetch all contacts from API

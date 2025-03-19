@@ -13,11 +13,19 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "server.js"
+      "dest": "/server.js"
     },
     {
       "src": "/(.*)",
-      "dest": "frontend/$1"
+      "dest": "/frontend/$1"
     }
-  ]
+  ],
+  "env": {
+    "FIREBASE_API_KEY": "AIzaSyCBU3FwiXE-V0yiVo3IA4VnkA8SpSeipxc",
+    "FIREBASE_AUTH_DOMAIN": "contact-list-manager-cfd87.firebaseapp.com",
+    "FIREBASE_PROJECT_ID": "contact-list-manager-cfd87",
+    "FIREBASE_STORAGE_BUCKET": "contact-list-manager-cfd87.firebasestorage.app",
+    "FIREBASE_MESSAGING_SENDER_ID": "800219968564",
+    "FIREBASE_APP_ID": "1:800219968564:web:fac539f40eb377deb54661"
+  }
 } 
