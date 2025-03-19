@@ -141,6 +141,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error('Network response was not ok');
             }
             const contacts = await response.json();
+            
+            // Clear IndexedDB and update with fresh data
+            if (navigator.onLine) {
+                const db = await openDB();
+                await db.clear('contacts');
+                for (const contact of contacts) {
+                    await db.put('contacts', contact);
+                }
+            }
+            
             // Sort contacts by name
             contacts.sort((a, b) => a.name.localeCompare(b.name));
             displayContacts(contacts);
@@ -255,18 +265,17 @@ document.addEventListener('DOMContentLoaded', function() {
             });
 
             if (!response.ok) {
-                throw new Error('Network response was not ok');
+                throw new Error(`Network response was not ok: ${response.status}`);
             }
 
-            // If offline, also save to IndexedDB
-            if (!navigator.onLine) {
-                const db = await openDB();
-                if (contactId) {
-                    await db.put('contacts', { ...contactData, id: contactId });
-                } else {
-                    const result = await response.json();
-                    await db.put('contacts', { ...contactData, id: result.id });
-                }
+            const result = await response.json();
+
+            // Update IndexedDB with the new data
+            const db = await openDB();
+            if (contactId) {
+                await db.put('contacts', { ...result });
+            } else {
+                await db.put('contacts', { ...result });
             }
 
             resetForm();
@@ -299,33 +308,38 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Delete a contact
-    function deleteContact(id) {
+    async function deleteContact(id) {
         if (confirm('Are you sure you want to delete this contact?')) {
-            // Check if offline
-            if (!navigator.onLine) {
-                offlineQueue.push({
-                    method: 'DELETE',
-                    url: `${API_URL}/${id}`
-                });
-                showNotification('You are offline. Changes will sync when online.', 'warning');
-                loadContacts();
-                return;
-            }
-            
-            fetch(`${API_URL}/${id}`, {
-                method: 'DELETE'
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
+            try {
+                // Check if offline
+                if (!navigator.onLine) {
+                    offlineQueue.push({
+                        method: 'DELETE',
+                        url: `${API_URL}/${id}`
+                    });
+                    showNotification('You are offline. Changes will sync when online.', 'warning');
+                    await loadFromIndexedDB();
+                    return;
                 }
-                loadContacts(); // Reload contacts to get the updated list
+                
+                const response = await fetch(`${API_URL}/${id}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Network response was not ok: ${response.status}`);
+                }
+
+                // Remove from IndexedDB
+                const db = await openDB();
+                await db.delete('contacts', id);
+
+                await loadContacts(); // Reload contacts to get the updated list
                 showNotification('Contact deleted successfully!', 'success');
-            })
-            .catch(error => {
+            } catch (error) {
                 console.error('Error deleting contact:', error);
                 showNotification('Failed to delete contact. Please try again.', 'error');
-            });
+            }
         }
     }
     
@@ -343,7 +357,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Scroll to form on mobile devices
         if (window.innerWidth < 768) {
-            document.querySelector('.w-1/2.pl-6').scrollIntoView({ behavior: 'smooth' });
+            const formSection = document.querySelector('.w-full.md\\:w-1\\/2.md\\:pl-6');
+            if (formSection) {
+                formSection.scrollIntoView({ behavior: 'smooth' });
+            }
         }
     }
     
