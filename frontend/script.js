@@ -57,12 +57,22 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
+        const db = await openDB();
         while (offlineQueue.length > 0) {
             const operation = offlineQueue[0]; // Look at first item without removing it
             try {
                 const response = await performOperation(operation);
                 if (response) {
                     offlineQueue.shift(); // Only remove if successful
+                    
+                    // Update IndexedDB with the new data from Firestore
+                    if (operation.tempId) {
+                        // Remove the temporary contact from IndexedDB
+                        await db.delete('contacts', operation.tempId);
+                        // Add the new contact with the Firestore ID
+                        await db.put('contacts', { ...response });
+                    }
+                    
                     showNotification('Offline changes synced successfully!', 'success');
                 } else {
                     throw new Error('No response from server');
@@ -73,6 +83,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 break; // Stop processing queue on error
             }
         }
+        
+        // After processing queue, reload contacts from Firestore
+        await loadContacts();
     }
     
     // Perform operation (create, update, delete)
@@ -99,18 +112,43 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Fetch all contacts from API
-    function loadContacts() {
-        fetch(API_URL)
-            .then(response => response.json())
-            .then(contacts => {
-                // Sort contacts by name
+    async function loadContacts() {
+        try {
+            const response = await fetch(API_URL);
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            const contacts = await response.json();
+            // Sort contacts by name
+            contacts.sort((a, b) => a.name.localeCompare(b.name));
+            displayContacts(contacts);
+        } catch (error) {
+            console.error('Error loading contacts:', error);
+            if (!navigator.onLine) {
+                showNotification('You are offline. Showing cached data.', 'warning');
+                // Try to load from IndexedDB if offline
+                loadFromIndexedDB();
+            } else {
+                contactsList.innerHTML = '<p class="text-red-500 text-center py-4">Error loading contacts. Please try again later.</p>';
+            }
+        }
+    }
+    
+    // Load contacts from IndexedDB
+    async function loadFromIndexedDB() {
+        try {
+            const db = await openDB();
+            const contacts = await db.getAll('contacts');
+            if (contacts && contacts.length > 0) {
                 contacts.sort((a, b) => a.name.localeCompare(b.name));
                 displayContacts(contacts);
-            })
-            .catch(error => {
-                console.error('Error loading contacts:', error);
-                contactsList.innerHTML = '<p class="text-red-500 text-center py-4">Error loading contacts. Please try again later.</p>';
-            });
+            } else {
+                contactsList.innerHTML = '<p class="text-gray-500 text-center py-4">No contacts found.</p>';
+            }
+        } catch (error) {
+            console.error('Error loading from IndexedDB:', error);
+            contactsList.innerHTML = '<p class="text-red-500 text-center py-4">Error loading contacts. Please try again later.</p>';
+        }
     }
     
     // Display contacts in the list
@@ -164,7 +202,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Save a new contact or update existing one
-    function saveContact(e) {
+    async function saveContact(e) {
         e.preventDefault();
         
         const contactData = {
@@ -184,46 +222,58 @@ document.addEventListener('DOMContentLoaded', function() {
         saveBtn.disabled = true;
         saveBtn.classList.add('opacity-75');
         
-        // Check if offline
-        if (!navigator.onLine) {
-            offlineQueue.push({
-                method,
-                url,
-                data: contactData
+        try {
+            // Always try to save to Firestore first
+            const response = await fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(contactData)
             });
-            showNotification('You are offline. Changes will sync when online.', 'warning');
-            resetForm();
-            loadContacts();
-            return;
-        }
-        
-        fetch(url, {
-            method: method,
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(contactData)
-        })
-        .then(response => {
+
             if (!response.ok) {
                 throw new Error('Network response was not ok');
             }
-            return response.json();
-        })
-        .then(data => {
+
+            // If offline, also save to IndexedDB
+            if (!navigator.onLine) {
+                const db = await openDB();
+                if (contactId) {
+                    await db.put('contacts', { ...contactData, id: contactId });
+                } else {
+                    const result = await response.json();
+                    await db.put('contacts', { ...contactData, id: result.id });
+                }
+            }
+
             resetForm();
-            loadContacts(); // Reload contacts to get the updated list
+            await loadContacts(); // Reload contacts to get the updated list
             showNotification('Contact saved successfully!', 'success');
-        })
-        .catch(error => {
+        } catch (error) {
             console.error('Error saving contact:', error);
-            showNotification('Failed to save contact. Please try again.', 'error');
-        })
-        .finally(() => {
+            if (!navigator.onLine) {
+                // If offline, save to IndexedDB and queue for sync
+                const db = await openDB();
+                const tempId = Date.now().toString();
+                await db.put('contacts', { ...contactData, id: tempId });
+                offlineQueue.push({
+                    method,
+                    url,
+                    data: contactData,
+                    tempId
+                });
+                showNotification('You are offline. Changes will sync when online.', 'warning');
+                resetForm();
+                await loadFromIndexedDB();
+            } else {
+                showNotification('Failed to save contact. Please try again.', 'error');
+            }
+        } finally {
             saveBtn.textContent = originalText;
             saveBtn.disabled = false;
             saveBtn.classList.remove('opacity-75');
-        });
+        }
     }
     
     // Delete a contact
