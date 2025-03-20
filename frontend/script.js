@@ -180,7 +180,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     const transaction = db.transaction('contacts', 'readwrite');
                     const store = transaction.objectStore('contacts');
                     
-                    // Clear existing data using store.clear()
+                    // Clear existing data
                     await store.clear();
                     
                     // Add new data
@@ -197,6 +197,7 @@ document.addEventListener('DOMContentLoaded', function() {
             contacts.sort((a, b) => a.name.localeCompare(b.name));
             console.log('Sorted contacts:', contacts);
             
+            // Display contacts immediately
             displayContacts(contacts);
         } catch (error) {
             console.error('Error loading contacts:', error);
@@ -416,11 +417,23 @@ document.addEventListener('DOMContentLoaded', function() {
                     throw new Error(`Network response was not ok: ${response.status}`);
                 }
 
-                // Remove from IndexedDB
-                const db = await openDB();
-                await db.delete('contacts', id);
+                // Remove from IndexedDB using proper transaction
+                try {
+                    const db = await openDB();
+                    const transaction = db.transaction('contacts', 'readwrite');
+                    const store = transaction.objectStore('contacts');
+                    await store.delete(id);
+                } catch (dbError) {
+                    console.error('Error removing from IndexedDB:', dbError);
+                    // Continue even if IndexedDB operation fails
+                }
 
-                await loadContacts(); // Reload contacts to get the updated list
+                // Update UI immediately
+                const contactElement = document.querySelector(`[data-id="${id}"]`).closest('.bg-white');
+                if (contactElement) {
+                    contactElement.remove();
+                }
+
                 showNotification('Contact deleted successfully!', 'success');
             } catch (error) {
                 console.error('Error deleting contact:', error);
