@@ -173,12 +173,23 @@ document.addEventListener('DOMContentLoaded', function() {
             const contacts = await response.json();
             console.log('Fetched contacts:', contacts);
             
-            // Clear IndexedDB and update with fresh data
+            // Update IndexedDB with fresh data
             if (navigator.onLine) {
-                const db = await openDB();
-                await db.clear('contacts');
-                for (const contact of contacts) {
-                    await db.put('contacts', contact);
+                try {
+                    const db = await openDB();
+                    const transaction = db.transaction('contacts', 'readwrite');
+                    const store = transaction.objectStore('contacts');
+                    
+                    // Clear existing data
+                    await store.clear();
+                    
+                    // Add new data
+                    for (const contact of contacts) {
+                        await store.put(contact);
+                    }
+                } catch (dbError) {
+                    console.error('Error updating IndexedDB:', dbError);
+                    // Continue even if IndexedDB update fails
                 }
             }
             
@@ -288,45 +299,72 @@ document.addEventListener('DOMContentLoaded', function() {
         saveBtn.classList.add('opacity-75');
         
         try {
-            // Always try to save to Firestore first
-            const response = await fetch(url, {
-                method: method,
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(contactData)
-            });
+            // Try to save to Firestore with retries
+            let retries = 3;
+            let lastError = null;
+            
+            while (retries > 0) {
+                try {
+                    const response = await fetch(url, {
+                        method: method,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Cache-Control': 'no-cache'
+                        },
+                        body: JSON.stringify(contactData)
+                    });
 
-            if (!response.ok) {
-                throw new Error(`Network response was not ok: ${response.status}`);
-            }
+                    if (response.ok) {
+                        const result = await response.json();
+                        
+                        // Update IndexedDB with the new data
+                        try {
+                            const db = await openDB();
+                            const transaction = db.transaction('contacts', 'readwrite');
+                            const store = transaction.objectStore('contacts');
+                            await store.put({ ...result });
+                        } catch (dbError) {
+                            console.error('Error updating IndexedDB:', dbError);
+                        }
 
-            const result = await response.json();
-
-            // Update IndexedDB with the new data
-            try {
-                const db = await openDB();
-                if (contactId) {
-                    await db.put('contacts', { ...result });
-                } else {
-                    await db.put('contacts', { ...result });
+                        resetForm();
+                        await loadContacts(); // Reload contacts to get the updated list
+                        showNotification('Contact saved successfully!', 'success');
+                        return;
+                    }
+                    
+                    lastError = new Error(`Network response was not ok: ${response.status}`);
+                    if (response.status === 503) {
+                        retries--;
+                        if (retries > 0) {
+                            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retry
+                            continue;
+                        }
+                    }
+                    throw lastError;
+                } catch (error) {
+                    lastError = error;
+                    retries--;
+                    if (retries > 0) {
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retry
+                        continue;
+                    }
+                    throw error;
                 }
-            } catch (dbError) {
-                console.error('Error updating IndexedDB:', dbError);
-                // Continue even if IndexedDB update fails
             }
-
-            resetForm();
-            await loadContacts(); // Reload contacts to get the updated list
-            showNotification('Contact saved successfully!', 'success');
+            
+            throw lastError;
         } catch (error) {
             console.error('Error saving contact:', error);
             if (!navigator.onLine) {
                 // If offline, save to IndexedDB and queue for sync
                 try {
                     const db = await openDB();
+                    const transaction = db.transaction('contacts', 'readwrite');
+                    const store = transaction.objectStore('contacts');
                     const tempId = Date.now().toString();
-                    await db.put('contacts', { ...contactData, id: tempId });
+                    await store.put({ ...contactData, id: tempId });
+                    
                     offlineQueue.push({
                         method,
                         url,
