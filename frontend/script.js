@@ -1,3 +1,23 @@
+// IndexedDB setup
+const DB_NAME = 'contact-list-manager';
+const DB_VERSION = 1;
+
+async function openDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result);
+
+        request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            if (!db.objectStoreNames.contains('contacts')) {
+                db.createObjectStore('contacts', { keyPath: 'id' });
+            }
+        };
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     // PWA Installation handling
     let deferredPrompt;
@@ -137,7 +157,13 @@ document.addEventListener('DOMContentLoaded', function() {
     async function loadContacts() {
         try {
             console.log('Fetching contacts from API...');
-            const response = await fetch(API_URL);
+            const response = await fetch(API_URL, {
+                headers: {
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
+                }
+            });
             console.log('API Response status:', response.status);
             
             if (!response.ok) {
@@ -146,6 +172,15 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const contacts = await response.json();
             console.log('Fetched contacts:', contacts);
+            
+            // Clear IndexedDB and update with fresh data
+            if (navigator.onLine) {
+                const db = await openDB();
+                await db.clear('contacts');
+                for (const contact of contacts) {
+                    await db.put('contacts', contact);
+                }
+            }
             
             // Sort contacts by name
             contacts.sort((a, b) => a.name.localeCompare(b.name));
@@ -269,11 +304,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const result = await response.json();
 
             // Update IndexedDB with the new data
-            const db = await openDB();
-            if (contactId) {
-                await db.put('contacts', { ...result });
-            } else {
-                await db.put('contacts', { ...result });
+            try {
+                const db = await openDB();
+                if (contactId) {
+                    await db.put('contacts', { ...result });
+                } else {
+                    await db.put('contacts', { ...result });
+                }
+            } catch (dbError) {
+                console.error('Error updating IndexedDB:', dbError);
+                // Continue even if IndexedDB update fails
             }
 
             resetForm();
@@ -283,20 +323,25 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error saving contact:', error);
             if (!navigator.onLine) {
                 // If offline, save to IndexedDB and queue for sync
-                const db = await openDB();
-                const tempId = Date.now().toString();
-                await db.put('contacts', { ...contactData, id: tempId });
-                offlineQueue.push({
-                    method,
-                    url,
-                    data: contactData,
-                    tempId
-                });
-                showNotification('You are offline. Changes will sync when online.', 'warning');
-                resetForm();
-                await loadFromIndexedDB();
+                try {
+                    const db = await openDB();
+                    const tempId = Date.now().toString();
+                    await db.put('contacts', { ...contactData, id: tempId });
+                    offlineQueue.push({
+                        method,
+                        url,
+                        data: contactData,
+                        tempId
+                    });
+                    showNotification('You are offline. Changes will sync when online.', 'warning');
+                    resetForm();
+                    await loadFromIndexedDB();
+                } catch (dbError) {
+                    console.error('Error saving to IndexedDB:', dbError);
+                    showNotification('Failed to save contact. Please try again.', 'error');
+                }
             } else {
-                showNotification('Failed to save contact. Please try again.', 'error');
+                showNotification(`Failed to save contact: ${error.message}`, 'error');
             }
         } finally {
             saveBtn.textContent = originalText;
