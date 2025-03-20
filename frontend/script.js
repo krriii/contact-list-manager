@@ -136,23 +136,21 @@ document.addEventListener('DOMContentLoaded', function() {
     // Fetch all contacts from API
     async function loadContacts() {
         try {
+            console.log('Fetching contacts from API...');
             const response = await fetch(API_URL);
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            const contacts = await response.json();
+            console.log('API Response status:', response.status);
             
-            // Clear IndexedDB and update with fresh data
-            if (navigator.onLine) {
-                const db = await openDB();
-                await db.clear('contacts');
-                for (const contact of contacts) {
-                    await db.put('contacts', contact);
-                }
+            if (!response.ok) {
+                throw new Error(`Network response was not ok: ${response.status}`);
             }
+            
+            const contacts = await response.json();
+            console.log('Fetched contacts:', contacts);
             
             // Sort contacts by name
             contacts.sort((a, b) => a.name.localeCompare(b.name));
+            console.log('Sorted contacts:', contacts);
+            
             displayContacts(contacts);
         } catch (error) {
             console.error('Error loading contacts:', error);
