@@ -180,7 +180,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     const transaction = db.transaction('contacts', 'readwrite');
                     const store = transaction.objectStore('contacts');
                     
-                    // Clear existing data
+                    // Clear existing data using store.clear()
                     await store.clear();
                     
                     // Add new data
@@ -214,7 +214,12 @@ document.addEventListener('DOMContentLoaded', function() {
     async function loadFromIndexedDB() {
         try {
             const db = await openDB();
-            const contacts = await db.getAll('contacts');
+            const transaction = db.transaction('contacts', 'readonly');
+            const store = transaction.objectStore('contacts');
+            
+            // Get all contacts from IndexedDB
+            const contacts = await store.getAll();
+            
             if (contacts && contacts.length > 0) {
                 contacts.sort((a, b) => a.name.localeCompare(b.name));
                 displayContacts(contacts);
