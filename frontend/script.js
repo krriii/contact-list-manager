@@ -433,30 +433,30 @@ document.addEventListener('DOMContentLoaded', function() {
     // Add responsive behavior
     function handleResponsiveness() {
         const contactsSection = document.querySelector('.flex');
+        const formSection = document.querySelector('.w-full.md\\:w-1\\/2.md\\:pl-6');
+        const listSection = document.querySelector('.w-full.md\\:w-1\\/2.md\\:pr-6');
         
         if (window.innerWidth < 768) {
-            contactsSection.classList.replace('flex', 'block');
-            document.querySelectorAll('[class*="w-1/2"]').forEach(el => {
-                el.classList.replace('w-1/2', 'w-full');
-                if (el.classList.contains('pr-6')) {
-                    el.classList.replace('pr-6', 'pb-6');
-                }
-                if (el.classList.contains('pl-6')) {
-                    el.classList.replace('pl-6', 'pt-6');
-                }
-            });
+            if (contactsSection) contactsSection.classList.replace('flex', 'block');
+            if (formSection) {
+                formSection.classList.replace('md:w-1/2', 'w-full');
+                formSection.classList.replace('md:pl-6', 'pt-6');
+            }
+            if (listSection) {
+                listSection.classList.replace('md:w-1/2', 'w-full');
+                listSection.classList.replace('md:pr-6', 'pb-6');
+            }
         } else {
-            if (contactsSection.classList.contains('block')) {
+            if (contactsSection && contactsSection.classList.contains('block')) {
                 contactsSection.classList.replace('block', 'flex');
-                document.querySelectorAll('[class*="w-full"]').forEach(el => {
-                    el.classList.replace('w-full', 'w-1/2');
-                    if (el.classList.contains('pb-6')) {
-                        el.classList.replace('pb-6', 'pr-6');
-                    }
-                    if (el.classList.contains('pt-6')) {
-                        el.classList.replace('pt-6', 'pl-6');
-                    }
-                });
+            }
+            if (formSection) {
+                formSection.classList.replace('w-full', 'md:w-1/2');
+                formSection.classList.replace('pt-6', 'md:pl-6');
+            }
+            if (listSection) {
+                listSection.classList.replace('w-full', 'md:w-1/2');
+                listSection.classList.replace('pb-6', 'md:pr-6');
             }
         }
     }
